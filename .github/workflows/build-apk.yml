@@ -13,42 +13,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract Yasem project
-        shell: bash
-        run: |
-          set -e
-          ZIP="$(find . -maxdepth 1 -type f -name 'YasemAndroid-v1.0-GitHub-Actions*.zip' | head -n 1)"
-          if [ -z "$ZIP" ]; then
-            echo "Yasem project ZIP not found"
-            exit 1
-          fi
-          rm -rf build-src
-          mkdir build-src
-          unzip -q "$ZIP" -d build-src
-          test -f build-src/settings.gradle.kts
-          test -d build-src/app
-
-      - name: Set up Java 17
+      - name: Set up Java JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+      - name: Check and Extract ZIP project if present
+        shell: bash
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Found ZIP file: $ZIP_FILE. Extracting..."
+            unzip -o "$ZIP_FILE" -d extracted_project
+            if [ -f "extracted_project/gradlew" ]; then
+              cp -rn extracted_project/* .
+            else
+              SUBDIR=$(find extracted_project -mindepth 1 -maxdepth 1 -type d | head -n 1)
+              if [ -n "$SUBDIR" ] && [ -f "$SUBDIR/gradlew" ]; then
+                cp -rn $SUBDIR/* .
+              fi
+            fi
+          fi
 
-      - name: Build debug APK
-        working-directory: build-src
-        run: gradle assembleDebug --no-daemon
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-      - name: Upload APK
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Yasem-debug-apk
-          path: build-src/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: Yasem-App-APK
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/debug/*.apk
+            
