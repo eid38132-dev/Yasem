@@ -1,4 +1,4 @@
-concurrency: name: Build Yasem APK
+name: Build Yasem APK
 
 on:
   workflow_dispatch:
