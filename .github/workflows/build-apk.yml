@@ -24,27 +24,18 @@ jobs:
         run: |
           unzip -q "YasemAndroid-v1.0-GitHub-Actions.zip" -d android-project
 
-      - name: Find Gradle project
-        run: |
-          GRADLEW=$(find android-project -type f -name gradlew -print -quit)
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found"
-            find android-project -maxdepth 4 -type f | head -100
-            exit 1
-          fi
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Grant execute permission
-        run: chmod +x "$PROJECT_DIR/gradlew"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.10'
 
       - name: Build Debug APK
         run: |
-          cd "$PROJECT_DIR"
-          ./gradlew assembleDebug
+          cd android-project
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Yasem-APK
-          path: android-project/**/build/outputs/apk/debug/*.apk
+          path: android-project/app/build/outputs/apk/debug/*.apk
