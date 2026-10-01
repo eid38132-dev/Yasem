@@ -22,6 +22,7 @@ jobs:
 
       - name: Extract Yasem project
         run: |
+          rm -rf android-project
           unzip -q "YasemAndroid-v1.0-GitHub-Actions.zip" -d android-project
 
       - name: Set up Gradle
@@ -29,13 +30,42 @@ jobs:
         with:
           gradle-version: '8.10'
 
+      - name: Fix Java and Kotlin JVM target
+        run: |
+          echo "Fixing JVM targets..."
+
+          find android-project -type f \( -name "*.gradle.kts" -o -name "*.gradle" \) -print0 | while IFS= read -r -d '' file
+          do
+            echo "Checking: $file"
+
+            sed -i \
+              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_17/g' \
+              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_17/g' \
+              -e 's/jvmTarget[[:space:]]*=[[:space:]]*"1\.8"/jvmTarget = "17"/g' \
+              -e "s/jvmTarget[[:space:]]*=[[:space:]]*'1\.8'/jvmTarget = '17'/g" \
+              "$file"
+          done
+
+          echo "JVM target fix completed."
+
+      - name: Show Android project
+        run: |
+          echo "Android project files:"
+          find android-project -maxdepth 3 -type f | sort
+
       - name: Build Debug APK
         run: |
           cd android-project
-          gradle assembleDebug
+          gradle assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          echo "Searching for APK..."
+          find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Yasem-APK
-          path: android-project/app/build/outputs/apk/debug/*.apk
+          path: android-project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
