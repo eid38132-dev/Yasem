@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -28,44 +28,92 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: '8.10'
+          gradle-version: '8.10.2'
 
-      - name: Fix Java and Kotlin JVM target
+      - name: Force Java and Kotlin to JVM 17
         run: |
-          echo "Fixing JVM targets..."
+          APP="android-project/app/build.gradle.kts"
 
-          find android-project -type f \( -name "*.gradle.kts" -o -name "*.gradle" \) -print0 | while IFS= read -r -d '' file
-          do
-            echo "Checking: $file"
+          if [ ! -f "$APP" ]; then
+            echo "ERROR: app/build.gradle.kts not found"
+            find android-project -maxdepth 4 -type f | sort
+            exit 1
+          fi
 
-            sed -i \
-              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_17/g' \
-              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_17/g' \
-              -e 's/jvmTarget[[:space:]]*=[[:space:]]*"1\.8"/jvmTarget = "17"/g' \
-              -e "s/jvmTarget[[:space:]]*=[[:space:]]*'1\.8'/jvmTarget = '17'/g" \
-              "$file"
-          done
+          cat >> "$APP" <<'EOF'
 
-          echo "JVM target fix completed."
+          // CI FIX: Force Java and Kotlin to JVM 17
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
+
+          echo "JVM 17 configuration added successfully."
 
       - name: Show Android project
         run: |
-          echo "Android project files:"
+          echo "===== Android project ====="
           find android-project -maxdepth 3 -type f | sort
 
       - name: Build Debug APK
         run: |
           cd android-project
-          gradle assembleDebug --stacktrace
+
+          set +e
+
+          gradle :app:assembleDebug --stacktrace --console=plain 2>&1 | tee ../build.log
+
+          STATUS=${PIPESTATUS[0]}
+
+          echo ""
+          echo "========================================"
+          echo "          BUILD ERROR SUMMARY"
+          echo "========================================"
+
+          if [ "$STATUS" -ne 0 ]; then
+            echo ""
+            echo "Build failed. Important error lines:"
+            echo ""
+
+            grep -nEi \
+              "What went wrong|Execution failed|e: |error:|Caused by:|FAILURE:" \
+              ../build.log | tail -80 || true
+
+            echo ""
+            echo "========================================"
+          else
+            echo "BUILD SUCCESSFUL"
+          fi
+
+          exit "$STATUS"
 
       - name: Find APK
+        if: success()
         run: |
           echo "Searching for APK..."
           find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Yasem-APK
           path: android-project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yasem-build-log
+          path: build.log
+          if-no-files-found: ignore
